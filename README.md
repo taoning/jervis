@@ -54,6 +54,9 @@ $ jv config
 This would open the config file using the default editor in your terminal.
 The config file is store in `~/.jervis.json` by default.
 
+## Installation
 
-
-
+You can build and install locally using
+```bash
+$ go build -o $GOPATH/bin/jv jervis
+```
