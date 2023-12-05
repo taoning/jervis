@@ -1,4 +1,4 @@
-# Jervis: OpenAI chat completion CLI writtent in Go
+# Jervis: OpenAI chat completion CLI
 
 A simple CLI written using Cobra and Viper to interact with OpenAI's chat completion API.
 
