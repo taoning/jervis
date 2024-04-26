@@ -47,7 +47,7 @@ func fileExists(filePath string) bool {
 
 func checkModel(model string) bool {
 	validModel := false
-	models := []string{"gpt-3.5-turbo-1106", "gpt-4-1106-preview"}
+	models := []string{"gpt-3.5-turbo-1106", "gpt-4-turbo"}
 	for _, v := range models {
 		if v == model {
 			validModel = true
