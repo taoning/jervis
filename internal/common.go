@@ -2,26 +2,32 @@ package internal
 
 import (
 	"bufio"
-	"bytes"
+	// "bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"strings"
+	// "path/filepath"
+	// "strings"
 
 	"github.com/chzyer/readline"
+)
+
+type Vendor string
+type Model string
+
+const (
+	Anthropic Vendor = "anthropic"
+	OpenAI    Vendor = "OpenAI"
+
+	gpt4o    Model = "gpt-4o"
+	sonnet35 Model = "claude-3-5-sonnet-20240620"
 )
 
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
-}
-
-type ChatCompletionRequestBody struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
 }
 
 type ChatCompletionChunk struct {
@@ -37,6 +43,45 @@ type ChatCompletionChunk struct {
 	} `json:"choices"`
 }
 
+type RequestBodyOpenAI struct {
+	Model    Model     `json:"model"`
+	Messages []Message `json:"messages"`
+	Stream   bool      `json:"stream"`
+}
+
+type RequestBodyAnthropic struct {
+	Model         Model     `json:"model"`
+	Messages      []Message `json:"messages"`
+	Max_token     int       `json:"max_token,omitempty"`
+	Stop_sequence []string  `json:"stop_sequence,omitempty"`
+	Stream        bool      `json:"stream"`
+	System        string    `json:"system"`
+	Temperature   float32   `json:"temperature"`
+}
+
+type responseAnthropic struct {
+	Id      string `json:"id"`
+	Type    string `json:"type"`
+	Role    string `json:"role"`
+	Content struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	Model string `json:"model"`
+}
+
+type RequestBundle struct {
+	vendor        Vendor
+	model         Model
+	systemMessage string
+	prompt        string
+	body          []byte
+}
+
+func isValidVendor(vendor Vendor) bool {
+	return vendor == Anthropic || vendor == OpenAI
+}
+
 func fileExists(filePath string) bool {
 	_, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
@@ -45,9 +90,9 @@ func fileExists(filePath string) bool {
 	return true
 }
 
-func checkModel(model string) bool {
+func isValidModel(model string) bool {
 	validModel := false
-	models := []string{"gpt-3.5-turbo-1106", "gpt-4o"}
+	models := []string{string(sonnet35), "gpt-4o"}
 	for _, v := range models {
 		if v == model {
 			validModel = true
@@ -60,7 +105,7 @@ func checkModel(model string) bool {
 	return true
 }
 
-func getFileContents(filePath string) (string, error) {
+func getFileContent(filePath string) (string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
@@ -68,33 +113,27 @@ func getFileContents(filePath string) (string, error) {
 	return string(data), nil
 }
 
-func decodeJSON(filePath string, body *ChatCompletionRequestBody) error {
+func decodeJSON(filePath string, body interface{}) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("Error opening JSON file %s", err)
 	}
 	defer file.Close()
 
-	if err := json.NewDecoder(file).Decode(body); err != nil {
-		return fmt.Errorf("Error decoding JSON file %s", err)
-	}
-	return nil
+	return json.NewDecoder(file).Decode(body)
 }
 
-func encodeJSON(filePath string, body ChatCompletionRequestBody) error {
+func encodeJSON(filePath string, body interface{}) error {
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("Error creating JSON file %s", err)
 	}
 	defer file.Close()
 
-	if err := json.NewEncoder(file).Encode(body); err != nil {
-		return fmt.Errorf("Error encoding JSON file %s", err)
-	}
-	return nil
+	return json.NewEncoder(file).Encode(body)
 }
 
-func handleInput(prompt bool) []string {
+func HandleInput(prompt bool) []string {
 	qlines := make([]string, 0)
 
 	if prompt {
@@ -148,8 +187,8 @@ func readFromPrompt() []string {
 	return lines
 }
 
-func printFormattedOutput(filePath string) {
-	var body ChatCompletionRequestBody
+func FormatOut(filePath string) {
+	var body RequestBodyOpenAI
 	err := decodeJSON(filePath, &body)
 	if err != nil {
 		fmt.Println("Error reading file.\n[ERROR] -", err)
@@ -164,132 +203,155 @@ func printFormattedOutput(filePath string) {
 	}
 }
 
-func createRequest(filePath string, newSession bool, model string, systemMessage string, question string) []byte {
-	var requestBody []byte
-	if newSession {
-		if fileExists(filePath) {
-			// delete the JSON file
-			err := os.Remove(filePath)
-			if err != nil {
-				panic(err)
-			}
-		}
+// func getVendorFromFilePath(filePath string) (vendor string) {
+// 	base := filepath.Base(filePath)
+// 	parts := strings.Split(base, "_")
+// 	vendor := parts[len(parts)-1]
+// 	return
+// }
+
+func getRequest(filePath string, newSession bool, bundle RequestBundle) (requestBody []byte) {
+	if newSession || !fileExists(filePath) {
+		requestBody = createNewRequestBody(bundle)
 		// Open the file for writing
-		file, _ := os.Create(filePath)
-		defer file.Close()
-		// Write the marshaled data to the file
-		requestBody = getRequestBody(model, systemMessage, question)
-		file.Write(requestBody)
+		if err := encodeJSON(filePath, requestBody); err != nil {
+			fmt.Println("Error writing new session file:", err)
+		}
 	} else {
-		if fileExists(filePath) {
-			var request ChatCompletionRequestBody
-			err := decodeJSON(filePath, &request)
-			if err != nil {
-				fmt.Println("Error decoding JSON.\n[ERROR] -", err)
-				os.Exit(1)
-			}
+		if bundle.vendor == Anthropic {
 
-			// Append data to slice
-			msg := Message{
-				Role:    "user",
-				Content: question,
-			}
-			request.Messages = append(request.Messages, msg)
+		} else if bundle.vendor == OpenAI {
 
-			// cfg.model = request.Model
-
-			requestBody, _ = json.Marshal(request)
-
-			err2 := encodeJSON(filePath, request)
-			if err2 != nil {
-				fmt.Println("Error encoding JSON.\n[ERROR] -", err2)
-				os.Exit(1)
-			}
-		} else {
-			requestBody = getRequestBody(model, systemMessage, question)
 		}
-	}
-	return requestBody
-}
-
-func getRequestBody(model string, systemMessge string, question string) []byte {
-	body := map[string]interface{}{
-		"model": model,
-		"messages": []map[string]string{
-			{
-				"role":    "system",
-				"content": systemMessge,
-			},
-			{
-				"role":    "user",
-				"content": question,
-			},
-		},
-		"stream": true,
-	}
-	requestBody, _ := json.Marshal(body)
-	return requestBody
-}
-
-func performAPIRequest(url string, requestBody []byte, key string) string {
-
-	// Create a new request
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+key)
-
-	// Send the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Println("Error on response.\n[ERROR] -", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	var responses []string
-	// Read the streamed response
-	reader := bufio.NewReader(resp.Body)
-	for {
-		line, err := reader.ReadBytes('\n')
+		var request RequestBodyOpenAI
+		err := decodeJSON(filePath, &request)
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			fmt.Println("Error on reading response.\n[ERROR] -", err)
+			fmt.Println("Error decoding JSON.\n[ERROR] -", err)
 			os.Exit(1)
 		}
-		if len(line) <= 1 {
-			continue
+
+		// Append data to slice
+		msg := Message{
+			Role:    "user",
+			Content: bundle.prompt,
 		}
+		request.Messages = append(request.Messages, msg)
 
-		jsonData := bytes.TrimPrefix(line, []byte("data: "))
+		// cfg.model = request.Model
 
-		// Unmarshal JSON into the struct
-		var chunk ChatCompletionChunk
-		err2 := json.Unmarshal(jsonData, &chunk)
+		requestBody, _ = json.Marshal(request)
+
+		err2 := encodeJSON(filePath, request)
 		if err2 != nil {
-			fmt.Println("Error unmarshalling JSON.\n[ERROR] -", err2, string(jsonData))
+			fmt.Println("Error encoding JSON.\n[ERROR] -", err2)
 			os.Exit(1)
 		}
-
-		if chunk.Choices[0].FinishReason == "stop" {
-			break
-		}
-
-		words := chunk.Choices[0].Delta.Content
-		fmt.Print(words)
-		responses = append(responses, words)
 	}
-	response := strings.Join(responses, "")
-	return response
+	return
 }
+
+func createNewRequestBody(bundle RequestBundle) (requestBody []byte) {
+	// body := map[string]interface{}{}
+	if bundle.vendor == Anthropic {
+		body := RequestBodyAnthropic{
+			Model:  bundle.model,
+			System: bundle.systemMessage,
+			Messages: []Message{{
+				Role:    "user",
+				Content: bundle.prompt,
+			}},
+			Stream: true,
+		}
+		requestBody, _ = json.Marshal(body)
+
+	} else if bundle.vendor == OpenAI {
+		body := RequestBodyOpenAI{
+			Model: bundle.model,
+			Messages: []Message{
+				{
+					Role:    "system",
+					Content: bundle.systemMessage,
+				},
+				{
+					Role:    "user",
+					Content: bundle.prompt,
+				},
+			},
+			Stream: true,
+		}
+		requestBody, _ = json.Marshal(body)
+	}
+	return
+}
+
+func setHeader(req *http.Request, key string, vendor Vendor) {
+	if vendor == Anthropic {
+		req.Header.Set("x-api-key", key)
+
+	} else if vendor == OpenAI {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	req.Header.Set("Content-Type", "application/json")
+}
+
+// func performRequest(url string, requestBody []byte, key string) string {
+//
+// 	// Create a new request
+// 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+// 	setHeader(req, key, vendor)
+//
+// 	// Send the request
+// 	client := &http.Client{}
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		fmt.Println("Error on response.\n[ERROR] -", err)
+// 		os.Exit(1)
+// 	}
+// 	defer resp.Body.Close()
+//
+// 	var responses []string
+// 	// Read the streamed response
+// 	reader := bufio.NewReader(resp.Body)
+// 	for {
+// 		line, err := reader.ReadBytes('\n')
+// 		if err != nil {
+// 			if err == io.EOF {
+// 				break
+// 			}
+// 			fmt.Println("Error on reading response.\n[ERROR] -", err)
+// 			os.Exit(1)
+// 		}
+// 		if len(line) <= 1 {
+// 			continue
+// 		}
+//
+// 		jsonData := bytes.TrimPrefix(line, []byte("data: "))
+//
+// 		// Unmarshal JSON into the struct
+// 		var chunk ChatCompletionChunk
+// 		err2 := json.Unmarshal(jsonData, &chunk)
+// 		if err2 != nil {
+// 			fmt.Println("Error unmarshalling JSON.\n[ERROR] -", err2, string(jsonData))
+// 			os.Exit(1)
+// 		}
+//
+// 		if chunk.Choices[0].FinishReason == "stop" {
+// 			break
+// 		}
+//
+// 		words := chunk.Choices[0].Delta.Content
+// 		fmt.Print(words)
+// 		responses = append(responses, words)
+// 	}
+// 	response := strings.Join(responses, "")
+// 	return response
+// }
 
 func persistConversation(filePath string, role string, response string) {
 	if !fileExists(filePath) {
 		return
 	}
-	var request ChatCompletionRequestBody
+	var request RequestBodyOpenAI
 	err := decodeJSON(filePath, &request)
 	if err != nil {
 		fmt.Println("Error decoding JSON.\n[ERROR] -", err)

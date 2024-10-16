@@ -22,31 +22,31 @@ THE SOFTWARE.
 package cmd
 
 import (
-    "fmt"
-    "os"
+	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
-    "github.com/spf13/viper"
-    "jervis/internal"
+	"github.com/spf13/viper"
+	"jervis/internal/config"
 )
 
 // configCmd represents the config command
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Edit the config file",
-	Long: `Edit the config file`,
+	Long:  `Edit the config file`,
 	Run: func(cmd *cobra.Command, args []string) {
-        editor := os.Getenv("EDITOR")
-        if editor == "" {
-            editor = "vim"
-        }
-        configPath := viper.ConfigFileUsed()
-        if configPath == "" {
-            fmt.Println("Config file not found")
-        }
-        if err := internal.EditConfig(editor, configPath); err != nil {
-            fmt.Println(err)
-        }
+		editor := os.Getenv("EDITOR")
+		if editor == "" {
+			editor = "vim"
+		}
+		configPath := viper.ConfigFileUsed()
+		if configPath == "" {
+			fmt.Println("Config file not found")
+		}
+		if err := config.EditConfig(editor, configPath); err != nil {
+			fmt.Println(err)
+		}
 	},
 }
 

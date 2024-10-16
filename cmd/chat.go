@@ -24,7 +24,7 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"jervis/internal"
+	"jervis/internal/chat"
 )
 
 // chatCmd represents the chat command
@@ -39,7 +39,7 @@ var chatCmd = &cobra.Command{
 			viper.Set("chat.fileName", sessionName)
 		}
 		viper.Set("newSession", newSession)
-		internal.DoChat()
+		chat.DoChat()
 	},
 }
 

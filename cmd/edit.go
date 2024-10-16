@@ -24,7 +24,7 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"jervis/internal"
+	"jervis/internal/edit"
 )
 
 // editCmd represents the edit command
@@ -34,12 +34,12 @@ var editCmd = &cobra.Command{
 	Long:  `Directly pass in text to have it edited.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		viper.Set("newSession", newSession)
-        if sessionName != "" {
-            viper.Set("editor.fileName", sessionName)
-        }
+		if sessionName != "" {
+			viper.Set("editor.fileName", sessionName)
+		}
 		viper.Set("format", format)
 		viper.Set("readlines", readLines)
-		internal.DoEdit()
+		edit.DoEdit()
 	},
 }
 

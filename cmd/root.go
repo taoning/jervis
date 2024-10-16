@@ -27,7 +27,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"jervis/internal"
+	"jervis/internal/config"
 )
 
 var cfgFile string
@@ -38,8 +38,8 @@ var format bool
 
 var rootCmd = &cobra.Command{
 	Use:   "jv",
-	Short: "CLI for OpenAI API",
-	Long:  "CLI for OpenAI Chat Completion API",
+	Short: "Chat completion",
+	Long:  "Chat completion",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -73,18 +73,22 @@ func initConfig() {
 		home, err := os.UserHomeDir()
 		cobra.CheckErr(err)
 
-        internal.SetDefaultConfig()
+		config.SetDefaultConfig()
 		// Search config in home directory with name ".jervis" (without extension).
 		viper.AddConfigPath(home)
 		viper.SetConfigType("json")
 		viper.SetConfigName(".jervis")
-        viper.SafeWriteConfig()
+		viper.SafeWriteConfig()
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
 
-	viper.SetEnvPrefix("openai")
-	viper.BindEnv("api_key")
+	// viper.SetEnvPrefix("openai")
+	viper.BindEnv("openai_api_key", "OPENAI_API_KEY")
+	viper.BindEnv("anthropic_api_key", "ANTHROPIC_API_KEY")
+
+	// viper.SetEnvPrefix("anthropic")
+	// viper.BindEnv("anthropic_api_key")
 
 	// If a config file is found, read it in.
 	err := viper.ReadInConfig()
